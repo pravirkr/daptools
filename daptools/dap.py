@@ -1,4 +1,3 @@
-import os
 import time
 import urllib
 import requests
@@ -116,27 +115,6 @@ df_frb = pd.concat([gb.get_group(x) for x in FRB_list])
 df_frb.reset_index(inplace=True, drop=True)
 
 
-
-def split_filepath(filepath, backend):
-    basename, ext = os.path.splitext(filepath)
-    if backend == "Medusa":
-        if len(basename.split("_")) == 5:
-            dformat, mjd1, mjd2, b_index, file_index = basename.split("_")
-            obs_id = "_".join([mjd1, mjd2])
-        elif len(basename.split("_")) == 4:
-            dformat, mjd1, mjd2, file_index = basename.split("_")
-            obs_id = "_".join([mjd1, mjd2])
-        elif len(basename.split("_")) == 3:
-            dformat, mjd1, mjd2 = basename.split("_")
-            obs_id = "_".join([mjd1, mjd2])
-            file_index = ""
-    elif backend == "HIPSR_SRCH":
-        if len(basename.split("_")) == 3:
-            dformatmjd1, mjd2, file_index = basename.split("_")
-            mjd1 = dformatmjd1.split("bpsr")[-1]
-            obs_id = "_".join([mjd1, mjd2])
-            file_index = file_index.split("beam")[-1]
-    return [mjd1, obs_id, file_index]
 
 
 dap_dp[["mjd1", "obs_id", "file_index"]] = pd.DataFrame(
