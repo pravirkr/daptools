@@ -39,6 +39,10 @@ class MedusaPath(FilePath):
         return self._receiver
 
     @property
+    def mjd1(self):
+        return self._mjd1
+
+    @property
     def obs_id(self):
         return f"{self._mjd1}_{self._mjd2}"
 

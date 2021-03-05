@@ -8,6 +8,8 @@ from rich.progress import track
 from urllib3.util import Retry
 from requests.adapters import HTTPAdapter
 
+from daptools.filenames import MedusaPath
+
 
 class DAPQuery(object):
     def __init__(self, mjd_gap=100, timeout=10):
@@ -49,7 +51,7 @@ class DAPQuery(object):
         )
         df.sort_values(by="filename", ascending=False, inplace=True)
         df.reset_index(inplace=True, drop=True)
-        return df
+        return QueryDF(df)
 
     def close(self):
         self.session.close()
@@ -104,58 +106,75 @@ class DAPQuery(object):
         return int(urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["p"][0])
 
 
-df_medusa = final_df.groupby("backend").get_group("Medusa")
-df_medusa.reset_index(inplace=True, drop=True)
-src_list = list(df_medusa.source.unique())
-CAL_list = [src for src in src_list if src.split("_")[-1] == "R"]
-FRB_list = [src for src in src_list if src.split("_")[-1] != "R" and src[0] != "J"]
-PSR_list = [src for src in src_list if src.split("_")[-1] != "R" and src[0] == "J"]
-gb = df_medusa.groupby("source")
-df_frb = pd.concat([gb.get_group(x) for x in FRB_list])
-df_frb.reset_index(inplace=True, drop=True)
+class QueryDF(object):
+    def __init__(self, df):
+        self.df = df
 
 
+def split_file(filename):
+    path = MedusaPath(filename)
+    return path.mjd1, path.obs_id, path.file_index
 
 
-dap_dp[["mjd1", "obs_id", "file_index"]] = pd.DataFrame(
-    dap_dp.apply(lambda x: split_filepath(x.filename, x.backend), axis=1).tolist(),
-    index=dap_dp.index,
-)
-dap_dp["start_MJD"] = dap_dp.sttImjd + dap_dp.sttOffs
-drop_columns = [
-    "dataCollectionId",
-    "fileSize",
-    "lastModified",
-    "collection",
-    "creationDate",
-    "equinox",
-    "frontend",
-    "hdrver",
-    "nrcvr",
-    "obsMode",
-    "observer",
-    "telescope",
-    "fdPoln",
-    "startTime",
-    "sttImjd",
-    "sttLst",
-    "sttOffs",
-    "sttSmjd",
-    "obs_id",
-]
-agg_arg = {
-    colname: "unique"
-    for colname in dap_dp.columns.to_list()
-    if colname not in drop_columns
-}
-agg_arg.update({"file_index": "count", "length": "sum"})
+def group_df(df, backend="Medusa", source="FRB"):
+    df_backend = df.groupby("backend").get_group(backend)
+    df_backend.reset_index(inplace=True, drop=True)
+    src_list = list(df_backend.source.unique())
+    gb = df_backend.groupby("source")
+    if source == "FRB":
+        source_list = [
+            src for src in src_list if src.split("_")[-1] != "R" and src[0] != "J"
+        ]
+    elif source == "PSR":
+        source_list = [
+            src for src in src_list if src.split("_")[-1] != "R" and src[0] == "J"
+        ]
+    elif source == "CAL":
+        source_list = [src for src in src_list if src.split("_")[-1] == "R"]
+    else:
+        raise ValueError(f"source type {source} not supported")
+    df_source = pd.concat([gb.get_group(src) for src in source_list])
+    df_source.reset_index(inplace=True, drop=True)
 
-group_dap_dp = dap_dp.groupby("obs_id").agg(agg_arg)
+    df_source[["mjd1", "obs_id", "file_index"]] = pd.DataFrame(
+        df_source.apply(lambda row: split_file(row.filename), axis=1).tolist(),
+        index=df_source.index,
+    )
+    df_source["start_MJD"] = df_source.sttImjd + df_source.sttOffs
 
-unique_columns = list(key for (key, value) in agg_arg.items() if value == "unique")
-for colname in unique_columns:
-    group_dap_dp[colname] = group_dap_dp[colname].map(lambda x: x[0])
-group_dap_dp = group_dap_dp.reset_index()
-group_dap_dp["length"] = group_dap_dp["length"] / 1000 / 3600.0
+    drop_columns = [
+        "dataCollectionId",
+        "fileSize",
+        "lastModified",
+        "collection",
+        "creationDate",
+        "equinox",
+        "frontend",
+        "hdrver",
+        "nrcvr",
+        "obsMode",
+        "observer",
+        "telescope",
+        "fdPoln",
+        "startTime",
+        "sttImjd",
+        "sttLst",
+        "sttOffs",
+        "sttSmjd",
+        "obs_id",
+    ]
+    agg_arg = {
+        colname: "unique"
+        for colname in df_source.columns.to_list()
+        if colname not in drop_columns
+    }
+    agg_arg.update({"file_index": "count", "length": "sum"})
+    group_df_source = df_source.groupby("obs_id").agg(agg_arg)
+    unique_columns = [key for (key, value) in agg_arg.items() if value == "unique"]
 
+    for colname in unique_columns:
+        group_df_source[colname] = group_df_source[colname].map(lambda row: row[0])
+    group_df_source.reset_index(inplace=True, drop=True)
+    group_df_source["length"] = group_df_source["length"] / 1000 / 3600.0
 
+    return group_df_source
