@@ -102,11 +102,19 @@ class HIPSRPath(FilePath):
         return self._receiver
 
     @property
+    def mjd1(self):
+        return self._mjd1
+
+    @property
     def obs_id(self):
         return f"{self._mjd1}_{self._mjd2}"
 
     @property
     def beam_index(self):
+        return self._beam_index
+
+    @property
+    def file_index(self):
         return self._beam_index
 
     @property
